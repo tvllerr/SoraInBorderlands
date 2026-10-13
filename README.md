@@ -3,7 +3,7 @@
 ![Sora in Borderlands: Sora, Donald and Goofy fighting skags in the Arid Badlands with KH1's command menu and HP gauges](docs/screenshot.jpg)
 
 > [!WARNING]
-> **Still very early and experimental.** Expect rough edges, and back up your saves (Borderlands and Kingdom Hearts) before you play.
+> **Early test build:** bugs and crashes are likely. The mod doesn't write your KH1 save, but keep a copy of your Borderlands and Kingdom Hearts saves just in case.
 
 Play **Borderlands GOTY Enhanced** as **Sora from Kingdom Hearts Final Mix**: real KH1 combos, magic, summons, Donald and Goofy, KH1's own menus and HUD.
 
