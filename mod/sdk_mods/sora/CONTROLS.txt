@@ -1,0 +1,44 @@
+SORA IN BORDERLANDS - controls and settings  (KH1 Final Mix runs alongside; Borderlands GOTY Enhanced in front)
+
+KEYS
+  WASD ............ move (KH1 Sora's run, 1.2x pace)
+  Left Shift ...... dash (Borderlands sprint speed)
+  Space ........... jump; Space again in the air = glide, Space again = stop gliding
+  Left mouse ...... attack (KH1 combo)
+  Right mouse ..... guard (once Sora has learned Guard in KH1)
+  C (crouch) ...... dodge roll - tap again to chain rolls (faster than running); rolls under low walls
+  Middle mouse .... lock-on (Borderlands enemies and free Heartless); again to release
+  F9 .............. KH1's real main menu (Items, Equipment, Abilities, Customize, Status...). F9 again closes.
+                    (Rebind it: Borderlands main menu > Mods > Sora > Keybinds > "Sora: KH1 menu".)
+                    In the menu: arrows / WASD move, Enter confirm, Backspace back, Q = Triangle, Z / C = L1 / R1
+  F ............... KH1 Triangle (reaction commands, e.g. Strike Raid)
+  F3 .............. test dummy: nearest enemy becomes a passive high-health punching bag; F3 again releases
+  F10 ............. free KH1 Heartless on / off (off at the start of every session)
+  Mod options (Mods menu > Sora): "Outlines" on / off = black ink outlines on the KH characters.
+  Command menu .... KH1's own (bottom left): mouse wheel / Up / Down move, left click = confirm, Q = back
+
+SETTINGS  (config.json in this folder - changes apply live, no restart)
+  Look
+    shadow 0.5 ............... character shadow darkness (0 = off)
+    outline 0.9 .............. ink outline strength (0 = off); outline_width 1.6
+    light_amb 0.5 ............ how dark the shaded side of the models is; light_rim 0.25 rim light
+    relight_ground_ref 0.45 .. lower = models brighter in sun / shade
+  Movement / camera
+    kh_pace 1.2 .............. run speed; kh_dash_pace 1.33 dash speed
+    lock_cam_pitch -12 ....... lock-on camera tilt; lock_close_dist 400, lock_close_turn 0.35
+    glide_sway 0.07 / glide_float 7 ... glide drift
+  Combat
+    kb_push / kh_proxy_push 9000 ... knockback of normal hits; kb_finisher_push 4.0 (finisher multiplier)
+    hitstop_hit 0.07 / hitstop_finisher 0.14 ... freeze on contact
+  Sound
+    sfx_voice 0.9 ............ voice lines; voice_atk_chance 0.4 grunt chance per swing
+    sfx_swing true ........... Keyblade swing whoosh
+    kh1_mute true ............ keeps KH1's own audio muted (Borderlands plays the sounds)
+    kh1_music true/false ..... KH1's own music (field / battle themes) instead of Borderlands' music; KH1's sound
+                               effects are silenced inside KH1 so nothing doubles
+    bl_sounds_off true ....... silences the hidden Borderlands character (grunts, footsteps)
+    sfx_footsteps / glide_wind_vol 0 ... off until the real KH1 sounds are captured
+
+NOTES
+  - Keep KH1's window open (it can sit behind Borderlands) - minimized, the F9 menu view goes black.
+  - Renderer updates load live: a new build dropped at data/sora_render_next.dll replaces the running one.

@@ -1,0 +1,132 @@
+SORA IN BORDERLANDS
+Play Borderlands as Sora from Kingdom Hearts Final Mix: real KH1 combos, magic, summons, Donald and Goofy.
+Kingdom Hearts runs in the background at the same time, and the mod links the two games together.
+
+
+=====================================================================
+ WHAT YOU NEED
+=====================================================================
+ - A Windows 10 or 11 PC
+ - On Steam, both installed:
+     * Borderlands Game of the Year Enhanced
+     * KINGDOM HEARTS HD 1.5+2.5 ReMIX   (Steam version. The Epic version won't work.)
+ - A KH1 Final Mix save where Donald and Goofy have joined you (after the first visit to Traverse Town)
+ - About 25 GB of free space on the drive Kingdom Hearts is on (only during the install; you get it back)
+ - An internet connection during the install
+
+
+=====================================================================
+ INSTALL  (3 steps)
+=====================================================================
+ 1. Right-click the zip file > "Extract All..." > Extract.
+    (Don't run anything from inside the zip.)
+
+ 2. Close Borderlands and Kingdom Hearts if they're open.
+
+ 3. Open the extracted folder and double-click  INSTALL.bat
+      - If Windows shows "Windows protected your PC": click "More info", then "Run anyway".
+      - If Windows asks for permission to install "Microsoft Visual C++", click Yes.
+      - Then wait. The first install takes about 15-30 minutes. When the window says
+        "ALL DONE", press any key to close it.
+
+ That's it. If something goes wrong, the window says what to fix. Fix it and run INSTALL.bat
+ again; it carries on from where it stopped.
+
+
+=====================================================================
+ PLAY  (every time)
+=====================================================================
+ 1. Start KINGDOM HEARTS HD 1.5+2.5 ReMIX from Steam and pick KINGDOM HEARTS FINAL MIX.
+    Load your save and walk around a little (not in a menu or a cutscene).
+ 2. Start Borderlands GOTY Enhanced from Steam and load your character.
+ 3. Click into the Borderlands window and play. Leave Kingdom Hearts open behind it
+    (don't minimize it).
+
+ The mod moves KH1 Sora to Traverse Town's Second District and controls him from Borderlands.
+ If you click back into the KH1 window, the mod leaves KH1 alone so you can play it normally.
+
+ YOUR BORDERLANDS LEVEL DECIDES SORA'S POWER
+ While you play, your Borderlands level sets Sora's (and Donald's and Goofy's) KH1 level, stats,
+ magic, abilities, summons and weapons - so any KH1 save works with any Borderlands character.
+ More Keyblades, spells and summons unlock as you level up in Borderlands.
+ This is TEMPORARY and only in memory: your KH1 save file is never written. Everything goes back to
+ your real KH1 values the moment you click into the KH1 window, or when Borderlands closes or crashes.
+ Extra safety: every time Borderlands starts, your KH1 save files are copied to
+   Documents\SoraInBorderlands\kh1_save_backups   (RESTORE_KH1_SAVE.bat in there puts the newest back)
+
+ Tip: if you see your Borderlands character instead of Sora, open "Mods" in the Borderlands
+ main menu and switch "Sora" off and on again.
+
+
+=====================================================================
+ CONTROLS
+=====================================================================
+  WASD ................ move
+  Left Shift .......... dash
+  Space ............... jump.  Space again in the air = glide.  Space again = stop gliding
+  Left mouse .......... attack / confirm the command menu choice
+  Right mouse ......... guard (once Sora has learned Guard in KH1)
+  C (crouch) .......... dodge roll. Tap again to chain rolls (faster than running).
+                        Rolls under low walls by itself
+  Middle mouse ........ lock on (press again to let go)
+  Mouse wheel, Up/Down  move in the command menu (bottom left).  Q = back
+  F ................... reaction command (KH1's Triangle)
+  F9 .................. KH1's real menu (Items, Equipment, Abilities, Status...). F9 again closes it.
+                        (Rebindable: Mods > Sora > Keybinds > "Sora: KH1 menu".)
+                        In the menu: arrows or WASD move, Enter confirms, Backspace goes back
+  F10 ................. extra KH1 Heartless roaming the Borderlands map, on / off
+  F3 .................. turn the nearest enemy into a practice dummy (F3 again to release it)
+  V, G ................ do nothing while you're Sora (Borderlands melee and grenades are off)
+  Cars ................ get in as usual - Sora rides in the driver's seat
+
+ Options: Borderlands main menu > Mods > Sora (Camera, Gameplay, Visuals, Audio - including the
+ KH1 volume, which follows Borderlands' volume).
+
+ Settings live in  <Borderlands folder>\sdk_mods\sora\config.json  (see CONTROLS.txt next to it).
+
+
+=====================================================================
+ UPDATE
+=====================================================================
+ Close Borderlands and Kingdom Hearts, then double-click  UPDATE.bat.  It checks for a newer
+ version online and installs it. Your settings are kept. Most updates take a few seconds; if an
+ update changes how the Kingdom Hearts files are built, it runs the full install again
+ (5-10 minutes, same as the first time).
+
+
+=====================================================================
+ UNINSTALL
+=====================================================================
+ Double-click  UNINSTALL.bat.  Kingdom Hearts and your saves were never changed.
+
+
+=====================================================================
+ PROBLEMS?
+=====================================================================
+ - "INSTALL STOPPED: ..." - read the line, fix it, run INSTALL.bat again.
+ - No Mods menu in Borderlands: run INSTALL.bat again with the game closed.
+ - Borderlands won't start ("Initialization error. Please ensure the game files have not been
+   corrupted or moved."): that's Borderlands' own 2K launcher crashing on PCs with a virtual display
+   adapter (MuMu Player, Meta Quest Link, Parsec, spacedesk...). The installer skips that launcher,
+   but Steam's "Verify integrity of game files" puts it back. Double-click FIX_LAUNCHER.bat (takes a
+   second) and start Borderlands again. UNINSTALL.bat puts the launcher back.
+ - Sora doesn't appear: check that KH1 Final Mix is running with a save loaded, in the field.
+ - Borderlands log: <Borderlands folder>\Binaries\Win64\Plugins\unrealsdk.log
+ - If a game crashed: Documents\SoraInBorderlands\crash_logs has a report - please send it along.
+ - Mod status: <Borderlands folder>\sdk_mods\sora\status.json
+ This is an early fan build: expect rough edges. Save often in both games.
+
+
+=====================================================================
+ ABOUT
+=====================================================================
+ Fan project. Offline / single-player only. No game files are included: the installer builds
+ Sora, Donald, Goofy, the Heartless, weapons and sounds from YOUR OWN copy of KH1, on your PC.
+ Please don't share the files it builds.
+
+ Made with Claude Code (Anthropic).
+ Uses: willow1 PythonSDK (bl-sdk, LGPL-3.0, downloaded during install), KHPCPatchManager
+ (AntonioDePau, Apache-2.0, downloaded during install), uv (Astral, downloaded during install),
+ vgmstream (included, see LICENSES), MinHook (built into the DLLs, see LICENSES),
+ KH1 file formats from OpenKH, KH1 addresses from gaithern/KH1-LUA-LIBRARY.
+ Kingdom Hearts (c) Disney / Square Enix. Borderlands (c) Gearbox / 2K.

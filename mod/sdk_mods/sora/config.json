@@ -1,0 +1,61 @@
+{
+ "flags": 195,
+ "hud_dy": 1.9,
+ "cam_up": 0.7,
+ "cam_scale": 9.0,
+ "cam_fov": 80,
+ "sfx_steps": 0.0,
+ "sfx_swing": false,
+ "sfx_footsteps": 0.0,
+ "glide_wind_vol": 0.0,
+ "kh_ability_pull_s": 0.35,
+ "kh1_ui_party_offset": [
+  -100.0,
+  0.0
+ ],
+ "kh_lock_cam_kh1": false,
+ "kh_menu_mdl_f": 1.104,
+ "kh_menu_mdl_oy": 0.64,
+ "kh_menu_mdl_offsets": [
+  [
+   -60.0,
+   0.0,
+   0.0
+  ],
+  [
+   68.0,
+   -10.0,
+   0.0
+  ],
+  [
+   179.0,
+   -20.0,
+   0.0
+  ]
+ ],
+ "kh_menu_mdl_bright": 1.05,
+ "kh_menu_mdl_light": [
+  0.1,
+  -0.25,
+  1.0
+ ],
+ "kh1_music": true,
+ "kh_park_dist": 1500.0,
+ "party_glide_follow": false,
+ "party_fly_motion": [
+  2,
+  2
+ ],
+ "party_fly_pitch_deg": [
+  0.0,
+  0.0
+ ],
+ "kh_juggle": true,
+ "kh1_drops": true,
+ "kh1_fx_ambient_s": 10.0,
+ "kh1_mapfeed": true,
+ "test_dummy_vk": 114,
+ "kh1_loadout": true,
+ "bl_block_melee": true,
+ "bl_block_skill": true
+}
