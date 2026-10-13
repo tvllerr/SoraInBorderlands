@@ -124,6 +124,9 @@ Kingdom Hearts runs in the background at the same time, and the mod links the tw
  Sora, Donald, Goofy, the Heartless, weapons and sounds from YOUR OWN copy of KH1, on your PC.
  Please don't share the files it builds.
 
+ Source code, full credits and new versions:
+ https://github.com/tvllerr/SoraInBorderlands
+
  Made with Claude Code (Anthropic).
  Uses: willow1 PythonSDK (bl-sdk, LGPL-3.0, downloaded during install), KHPCPatchManager
  (AntonioDePau, Apache-2.0, downloaded during install), uv (Astral, downloaded during install),
