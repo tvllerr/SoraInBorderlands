@@ -1,0 +1,88 @@
+{
+ "schemaVersion": 1,
+ "mode": "installed",
+ "games": [
+  {
+   "slug": "custom-borderlands-game-of-the-year-enhanced",
+   "role": "primary"
+  },
+  {
+   "slug": "custom-kingdom-hearts-hd-1-5-2-5-remix",
+   "role": "companion"
+  }
+ ],
+ "components": [
+  {
+   "id": "main",
+   "fileName": "SoraInBorderlands-melty-1.0.0.zip",
+   "label": "Sora in Borderlands",
+   "kind": "main",
+   "required": true
+  }
+ ],
+ "requirements": [],
+ "mappings": [
+  {
+   "component": "main",
+   "from": "kh/steam_appid.txt",
+   "to": "{game:custom-kingdom-hearts-hd-1-5-2-5-remix}"
+  },
+  {
+   "component": "main",
+   "from": "game/",
+   "to": "{game}"
+  },
+  {
+   "component": "main",
+   "from": "setup/",
+   "to": "{managed}/setup"
+  }
+ ],
+ "setup": {
+  "label": "Sora from your KH1",
+  "launch": {
+   "kind": "exe",
+   "path": "{managed}/setup/installer/melty_setup.exe",
+   "args": [
+    "-BorderlandsDir",
+    "{game}",
+    "-KingdomHeartsDir",
+    "{game:custom-kingdom-hearts-hd-1-5-2-5-remix}",
+    "-DoneFile",
+    "{managed}/kh_build_v1.done"
+   ]
+  },
+  "done": {
+   "file": "{managed}/kh_build_v1.done"
+  }
+ },
+ "together": [
+  {
+   "launch": {
+    "kind": "exe",
+    "path": "{game:custom-kingdom-hearts-hd-1-5-2-5-remix}/KINGDOM HEARTS FINAL MIX.exe",
+    "cwd": "{game:custom-kingdom-hearts-hd-1-5-2-5-remix}"
+   },
+   "startFirst": true,
+   "waitSeconds": 20
+  }
+ ],
+ "launch": {
+  "kind": "exe",
+  "path": "{game}/Binaries/Win64/Launcher.exe",
+  "cwd": "{game}/Binaries/Win64"
+ },
+ "runtimeData": [],
+ "notes": {
+  "firstLaunch": "The first Play builds Sora, Donald, Goofy, the Heartless, weapons and sounds from your own KH1 install (15-30 minutes, about 25 GB free needed on the Kingdom Hearts drive while it runs)."
+ },
+ "test": {
+  "checks": [
+   "kh1-autoload",
+   "bridge-input",
+   "kh1-fx-loaded",
+   "sora-in-level"
+  ],
+  "minutes": 6
+ }
+}

@@ -8900,7 +8900,10 @@ def dbg_exec_tick(S, pc) -> None:
             import traceback
             out.append(traceback.format_exc())
         (HERE / "dbg_exec.txt").write_text(chr(10).join(str(x) for x in out))
-    S.pending.append(_run)
+    if d.get("inline"):                  # run now, in PostRender (BL's front end may never PlayerTick the jobs)
+        _run()
+    else:
+        S.pending.append(_run)
 
 
 def get_pc_safe():
@@ -9195,6 +9198,185 @@ def kh1_save_backup(S) -> None:
             f"echo Restoring backup %NEWEST% ...\r\nxcopy /e /y /i \"%~dp0kh1_save_backups\\%NEWEST%\" \"{src_root}\"\r\n"
             "echo Done. & pause\r\n", encoding="utf-8")
     S.status["kh1_save_backup"] = {"files": len(files), "to": str(dst_root / stamp)}
+
+
+# KH1 title screen (found 2026-10-15 by memory diff + traces, Steam 1.0.0.2):
+KH_TITLE = 0x23404E8         # u32: 1 once the title menu has been reached
+KH_TITLE_PIC = 0x2EE8BB8     # u32: screen id: 2..0x18 opening poem / logos (attract loop), 0x1a/0x1b title, 0x22 load menu
+KH_TITLE_CURSOR = 0x2EE8BB0  # u32: title menu row: 0 NEW GAME, 1 LOAD, 2 THEATER, 3 BACK
+KH_MENU_CHECK = 0x2E92838    # u32: 3 while the load menu's slot list takes input, 0 once a slot was picked
+
+
+def kh1_autoload(S) -> None:
+    """Once per KH1 process: when KH1 sits at its opening / title screen, load the bridge and press through it
+    (skip the poem, LOAD, Enter on the slot the list opens on = the last one used) so the player lands in the field
+    without touching KH1. Presses go through the bridge pad hook (KH1 ignores keys while unfocused). Never presses
+    anything else (F in the load menu deletes the file). Off: config kh1_autoload false."""
+    st, now = S.state, time.time()
+    if not S.CFG.get("kh1_autoload", True) or getattr(S, "dll", None) is None:
+        return
+    al = st.get("kh_autoload")
+    if al and al.get("phase") in ("done", "gave up", "skipped"):
+        kh = getattr(S, "kh", None) or {}
+        if not kh.get("pid") or kh.get("pid") == al.get("pid"):
+            return
+        al = None                                                     # a new KH1 process: run again
+    if kh1_state(S) is not None and not al:                           # already in the field (BL restarted mid-game)
+        st["kh_autoload"] = {"pid": (S.kh or {}).get("pid"), "phase": "skipped"}
+        return
+    kh = getattr(S, "kh", None) or {}
+    pid = kh.get("pid")
+    if not pid:
+        return
+    if not al:
+        al = st["kh_autoload"] = {"pid": pid, "phase": "bridge", "t0": now, "next": 0.0, "press": None, "picked": False}
+
+    def u32(rva):
+        b = kh1_mem(S, rva, 4)
+        return int.from_bytes(b, "little") if b else None
+
+    def finish(phase):
+        al["phase"] = phase
+        S.dll.sr_set_pad(0, 0, 0x80, 0x80, 0x80, 0x80)               # hand the pad back
+        kh1_event(S, f"KH1 auto-load: {phase} after {now - al['t0']:.1f} s")
+
+    sora = kh1_mem(S, KH_SORA_PTR, 8)
+    if sora and int.from_bytes(sora, "little"):
+        return finish("done")
+    if now - al["t0"] > float(S.CFG.get("kh1_autoload_timeout", 90.0)):
+        return finish("gave up")
+    pic, title, cur, check = u32(KH_TITLE_PIC), u32(KH_TITLE), u32(KH_TITLE_CURSOR), u32(KH_MENU_CHECK)
+    S.status["kh1_autoload"] = {"phase": al["phase"], "pic": pic, "title": title, "cursor": cur, "check": check}
+    if al["phase"] == "bridge":                                       # the pad hook first (khfx_inject loads kh1_fx later)
+        sh = kh1_shared(S)
+        if sh and sh_u32(sh, SH_BRIDGE_VERSION) >= 3 and kh1_has_module(pid, "kh1_bridge.dll"):
+            al["phase"] = "menu"
+        elif now >= al["next"]:
+            al["next"] = now + 5.0
+            bpath = HERE / "data" / "kh1_bridge.dll"
+            if kh1_has_module(pid, "kh1_bridge.dll") is False and bpath.exists():
+                _kh1_load(S, pid, str(bpath.resolve()))
+        return
+    # one press at a time: hold 0.12 s, then at least 0.6 s released before the next decision
+    btn = 0
+    if al["press"]:
+        bits, until = al["press"]
+        if now < until:
+            btn = bits
+        else:
+            al["press"] = None
+    elif now >= al["next"] and pic is not None:
+        if al["picked"]:
+            pass                                                      # slot chosen: just wait for the field
+        elif pic == 0x22:
+            if check == 3 and now - al.get("list_t", now) > 1.0:      # slot list up (after "Checking..."): Enter
+                btn = PAD_CROSS
+                al["picked_try"] = al.get("picked_try", 0) + 1
+            al.setdefault("list_t", now)
+        elif title == 1 and pic in (0x1a, 0x1b) and cur is not None:
+            btn = PAD_CROSS if cur == 1 else (PAD_DOWN if cur == 0 else PAD_UP)
+        elif pic < 0x1a:
+            btn = PAD_CROSS                                           # opening poem / attract loop: skip to the title
+        if btn:
+            al["press"] = (btn, now + 0.12)
+            al["next"] = now + 0.72
+    if pic == 0x22 and check == 0 and al.get("picked_try"):
+        al["picked"] = True                                           # the list let go of input = the load started
+    S.dll.sr_set_pad(1, btn, 0x80, 0x80, 0x80, 0x80)
+
+
+MELTY_TEST_FILE = Path(os.environ.get("LOCALAPPDATA", "")) / "Melty" / "test" / "sora-in-borderlands.json"
+MELTY_CHECKS = ("kh1-autoload", "bridge-input", "kh1-fx-loaded", "sora-in-level")
+
+
+def bl_frontend_play() -> str:
+    """One step from BL's front end toward a level: in the lobby press Play Game (extStart), else open the single-player
+    lobby from the main menu (OpenSP). Returns what it did."""
+    import unrealsdk  # type: ignore
+    def live(cls):
+        return [o for o in unrealsdk.find_all(cls) if o._path_name().startswith("Transient.")]
+    lobby = live("WillowGFxMenuLobby2")
+    if lobby:
+        lobby[0].extStart(0, "")
+        return "lobby extStart"
+    fe = live("WillowGFxMenuFrontend")
+    if fe:
+        return f"frontend OpenSP -> {fe[0].OpenSP()}"
+    ps = [o for o in unrealsdk.find_all("WillowGFxMoviePressStart") if not o.Name.startswith("Default__")]
+    if ps:                                     # "press start": what any key does there
+        try:
+            ps[-1].extContinue()
+            return f"press start extContinue ({ps[-1]._path_name()})"
+        except Exception as ex:  # noqa: BLE001
+            return f"press start ERR {type(ex).__name__}: {ex}"
+    return "no front end yet"
+
+
+def melty_test_tick(S, pc) -> None:
+    """Melty test runs only (while %LOCALAPPDATA%\\Melty\\test\\sora-in-borderlands.json exists): leave BL's main menu
+    for Fyrestone by itself and append "pass <check>" / "fail <check>: why" lines to the file the test names. Never
+    quits the game (Melty closes it)."""
+    st, now = S.state, time.time()
+    mt = st.get("melty_test")
+    if mt is None:
+        if now < st.get("melty_test_look", 0):
+            return
+        st["melty_test_look"] = now + 10.0
+        try:
+            cfg = json.loads(MELTY_TEST_FILE.read_text(encoding="utf-8-sig"))
+        except Exception:  # noqa: BLE001
+            return
+        mt = st["melty_test"] = {"t0": now, "out": cfg.get("checks"), "done": {}, "menu_t": None, "opened": 0}
+        kh1_event(S, f"Melty test mode: run {cfg.get('run')} of {cfg.get('runs')}")
+
+    def report(name, ok, why=""):
+        if name in mt["done"] or not mt["out"]:
+            return
+        mt["done"][name] = ok
+        try:
+            with open(mt["out"], "a", encoding="utf-8") as f:
+                f.write(f"pass {name}\n" if ok else f"fail {name}: {why}\n")
+        except Exception as ex:  # noqa: BLE001
+            S.status["melty_test"] = f"ERR writing checks: {ex}"
+
+    pawn = pc.Pawn if pc is not None else None
+    # main menu -> lobby -> Play Game with the last save, through BL's own front-end calls. Called right here (PostRender):
+    # S.pending jobs never run in the front end (no PlayerTick there), so a queued console 'open' never fired.
+    if pawn is None:
+        mt["menu_t"] = mt["menu_t"] or now
+        al = st.get("kh_autoload") or {}
+        ready = al.get("phase") in ("done", "gave up", "skipped") or now - mt["menu_t"] > 90
+        if ready and now - mt["menu_t"] > 3 and mt["opened"] < 16 and now >= mt.get("open_next", 0):
+            mt["opened"] += 1                  # press start -> main menu -> lobby -> level: one step each try
+            mt["open_next"] = now + 12.0
+            mt["step"] = bl_frontend_play()
+    else:
+        mt["menu_t"] = None
+    al = st.get("kh_autoload") or {}
+    if al.get("phase") in ("done", "skipped"):
+        report("kh1-autoload", True)
+    elif al.get("phase") == "gave up":
+        report("kh1-autoload", False, f"KH1 never reached the field (last {S.status.get('kh1_autoload')})")
+    sh = kh1_shared(S)
+    seq = sh_u32(sh, 16) if sh else 0                                  # SharedBlock.kh_seq: overridden pad reads
+    if pawn is not None and kh1_state(S) is not None:
+        mt.setdefault("seq0", seq)
+        if seq - mt["seq0"] > 60:
+            report("bridge-input", True)
+        mt["live_since"] = mt.get("live_since") or now
+        if now - mt["live_since"] > 10 and S.frame.visible:
+            report("sora-in-level", True)
+    else:
+        mt["live_since"] = None
+    pid = (getattr(S, "kh", None) or {}).get("pid")
+    if pid and st.get("khfx_injected") == pid:
+        report("kh1-fx-loaded", True)
+    if now - mt["t0"] > float(S.CFG.get("melty_test_deadline", 240.0)):   # Melty's run is 5 min: answer before it
+        why = {"kh1-autoload": "KH1 still not in the field", "bridge-input": "no forwarded pad reads in KH1",
+               "kh1-fx-loaded": "kh1_fx.dll never loaded into KH1", "sora-in-level": "no live Sora in a BL level"}
+        for name in MELTY_CHECKS:
+            report(name, False, why[name])
+    S.status["melty_test"] = {"done": mt["done"], "opened": mt["opened"], "step": mt.get("step")}
 
 
 def _lo_bands(S) -> dict:
@@ -10182,6 +10364,10 @@ def tick(S, pc) -> None:
     """Wrapper: keeps the traceback of a tick error in status.json (error_trace)."""
     _guard_jobs(S)
     try:
+        kh1_save_backup(S)                    # once per BL start, before anything connects to KH1 (no-op after)
+    except Exception as ex:  # noqa: BLE001
+        S.status["kh1_save_backup"] = f"ERR {type(ex).__name__}: {ex}"
+    try:
         kh1_guard_tick(S)                     # heartbeat first: kh1_fx restores + pauses KH1 when ticks stop
     except Exception as ex:  # noqa: BLE001
         S.status["kh1_guard"] = f"ERR {type(ex).__name__}: {ex}"
@@ -10194,6 +10380,18 @@ def tick(S, pc) -> None:
         import traceback
         S.status["error_trace"] = traceback.format_exc()[-1200:]
         raise
+    try:
+        kh1_autoload(S)                       # after _tick: its title-screen presses are the frame's last pad write
+    except Exception as ex:  # noqa: BLE001
+        S.status["kh1_autoload"] = f"ERR {type(ex).__name__}: {ex}"
+    try:
+        melty_test_tick(S, pc)
+    except Exception as ex:  # noqa: BLE001
+        S.status["melty_test"] = f"ERR {type(ex).__name__}: {ex}"
+    try:
+        dbg_exec_tick(S, pc)                  # also here: _tick never gets that far in BL's front end
+    except Exception as ex:  # noqa: BLE001
+        S.status["dbg_exec"] = f"ERR {type(ex).__name__}: {ex}"
 
 
 def _has_uobject(v, depth: int = 0) -> bool:

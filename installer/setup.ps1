@@ -11,13 +11,17 @@ What it does, in order:
   5. copies the mod into Borderlands and deletes the temporary folder
 It never changes Kingdom Hearts or your saves, and nothing from Kingdom Hearts is shipped in the zip.
 #>
-param([switch]$Remove, [switch]$FixLauncher, [switch]$Update, [switch]$KeepTemp, [string]$BorderlandsDir = "", [string]$KingdomHeartsDir = "")
+param([switch]$Remove, [switch]$FixLauncher, [switch]$Update, [switch]$KeepTemp, [string]$BorderlandsDir = "", [string]$KingdomHeartsDir = "",
+      [switch]$Melty, [string]$DoneFile = "")
+# -Melty: Melty (melty.gg) already placed the mod loader and the mod code into Borderlands; this only builds the KH1
+# files from the player's own install into sdk_mods\sora\data, asks nothing, and writes $DoneFile when finished.
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"          # Invoke-WebRequest is very slow with its progress bar on
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Root = Split-Path -Parent $Here
 $ModSrc = Join-Path $Root "mod"
+if ($Melty) { try { Start-Transcript -Path (Join-Path $Root "setup.log") -Force | Out-Null } catch { } }
 
 $SDK_URL = "https://github.com/bl-sdk/willow1-mod-manager/releases/download/v2.3/bl1-enhanced-sdk.zip"
 $KHPC_URL = "https://github.com/AntonioDePau/KHPCPatchManager/releases/download/v1.2.1/KHPCPatchManager.exe"
@@ -36,6 +40,7 @@ function Fail($t) {
     exit 1
 }
 function Ask-YesNo($q) {
+    if ($Melty) { Say "$q -> yes (Melty install)"; return $true }
     while ($true) {
         $a = (Read-Host "$q [Y/N]").Trim().ToUpper()
         if ($a -eq "Y" -or $a -eq "YES") { return $true }
@@ -168,7 +173,7 @@ if ($Update) {
     if (-not $asset) { Fail "the latest release ($($rel.tag_name)) has no zip attached." }
     # KH1 too: it has the mod's kh1_fx.dll loaded from sdk_mods\sora\data (a local test server run skips that check)
     $running = Get-Process -ErrorAction SilentlyContinue | Where-Object { ($_.Path -and $_.Path.StartsWith($BL, "OrdinalIgnoreCase")) -or ($_.ProcessName -like "KINGDOM HEARTS*" -and -not $env:SORA_UPDATE_API) }
-    if ($running) { Fail "close Borderlands and Kingdom Hearts first ($(($running | ForEach-Object Name | Select-Object -Unique) -join ', ') still running)." }
+    if ($running -and -not $Melty) { Fail "close Borderlands and Kingdom Hearts first ($(($running | ForEach-Object Name | Select-Object -Unique) -join ', ') still running)." }
     $upd = Join-Path $Root "_update"
     if (Test-Path $upd) { Remove-Item $upd -Recurse -Force }
     New-Item -ItemType Directory -Force $upd | Out-Null
@@ -228,7 +233,7 @@ if (-not $KH) { $KH = Pick-Folder "KINGDOM HEARTS HD 1.5+2.5 ReMIX" "Image\dt\kh
 Say "   Kingdom Hearts:  $KH"
 
 $running = Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -and ($_.Path.StartsWith($BL, "OrdinalIgnoreCase") -or $_.Path.StartsWith($KH, "OrdinalIgnoreCase")) }
-if ($running) { Fail "close Borderlands and Kingdom Hearts first ($(($running | ForEach-Object Name | Select-Object -Unique) -join ', ') still running)." }
+if ($running -and -not $Melty) { Fail "close Borderlands and Kingdom Hearts first ($(($running | ForEach-Object Name | Select-Object -Unique) -join ', ') still running)." }
 
 $kh1exe = Join-Path $KH "KINGDOM HEARTS FINAL MIX.exe"
 if (-not (Test-Path $kh1exe)) { Fail "KINGDOM HEARTS FINAL MIX.exe is missing from $KH." }
@@ -259,7 +264,9 @@ if (-not $vc -or $vc.Installed -ne 1) {
     $p = Start-Process $vcexe -ArgumentList "/install", "/passive", "/norestart" -Verb RunAs -Wait -PassThru
     if ($p.ExitCode -notin 0, 1638, 3010) { Fail "the Visual C++ runtime install failed (code $($p.ExitCode))." }
 }
-if ((Test-Path (Join-Path $Plugins "pyunrealsdk.dll")) -and (Test-Path (Join-Path $BL "sdk_mods\mods_base.sdkmod"))) {
+if ($Melty) {
+    Say "   installed by Melty"
+} elseif ((Test-Path (Join-Path $Plugins "pyunrealsdk.dll")) -and (Test-Path (Join-Path $BL "sdk_mods\mods_base.sdkmod"))) {
     Say "   already installed"
 } else {
     $sdkzip = Join-Path $Tmp "bl1-enhanced-sdk.zip"
@@ -268,8 +275,8 @@ if ((Test-Path (Join-Path $Plugins "pyunrealsdk.dll")) -and (Test-Path (Join-Pat
     Say "   installed willow1 PythonSDK v2.3 (adds the Mods menu)"
 }
 # The Steam GOTY Enhanced exe is Launcher.exe, which the SDK doesn't recognise -> exe_override + our init script.
-Copy-Item (Join-Path $ModSrc "Binaries\Win64\Plugins\bl1e_exe_fix.py") $Plugins -Force
-$tomlText = Get-Content $Toml -Raw
+if (-not $Melty) { Copy-Item (Join-Path $ModSrc "Binaries\Win64\Plugins\bl1e_exe_fix.py") $Plugins -Force }
+$tomlText = if ($Melty) { "exe_override bl1e_exe_fix" } else { Get-Content $Toml -Raw }   # Melty ships the set-up toml
 if ($tomlText -notmatch 'exe_override' -or $tomlText -notmatch 'bl1e_exe_fix') {
     if (-not (Test-Path "$Toml.orig")) { Copy-Item $Toml "$Toml.orig" }
     $want = @{ "unrealsdk" = 'exe_override = "BorderlandsGOTY.exe"'; "pyunrealsdk" = 'init_script = "bl1e_exe_fix.py"' }
@@ -288,7 +295,26 @@ if ($tomlText -notmatch 'exe_override' -or $tomlText -notmatch 'bl1e_exe_fix') {
     [IO.File]::WriteAllLines($Toml, [string[]]$out)    # UTF-8 without BOM
     Say "   set the loader up for the Steam GOTY Enhanced exe (unrealsdk.toml; original kept as unrealsdk.toml.orig)"
 }
-Skip-Launcher $Win64
+if (-not $Melty) { Skip-Launcher $Win64 }    # Melty starts the game through Steam and never changes its files
+
+# ---------------------------------------------------------------------------------------------- KH1 save backup
+# A permanent copy of the player's KH saves from BEFORE the mod ever ran (never rotated out; the mod itself also backs
+# them up on every Borderlands start, keeping the last 10). Only made once: a reinstall/update keeps the first one.
+Step "Backing up your Kingdom Hearts saves"
+$docs = [Environment]::GetFolderPath("MyDocuments")
+$khSaves = Join-Path $docs "My Games\KINGDOM HEARTS HD 1.5+2.5 ReMIX"
+$origBak = Join-Path $docs "SoraInBorderlands\kh1_save_backup_before_mod"
+if (Test-Path $origBak) {
+    Say "   already backed up earlier: $origBak"
+} elseif (Test-Path $khSaves) {
+    New-Item -ItemType Directory -Force $origBak | Out-Null
+    Copy-Item (Join-Path $khSaves "*") $origBak -Recurse -Force
+    Set-Content (Join-Path $origBak "README.txt") ("Your Kingdom Hearts HD 1.5+2.5 saves from before Sora in Borderlands was installed " +
+        "($(Get-Date -Format s)). To put them back: close Kingdom Hearts, then copy everything in this folder (except this file) into`r`n$khSaves")
+    Say "   saved a copy to $origBak"
+} else {
+    Say "   no Kingdom Hearts saves found yet ($khSaves)" "Yellow"
+}
 
 # ---------------------------------------------------------------------------------------------- 3. unpack KH1 files
 Step "Unpacking Kingdom Hearts files from your install (takes a while, about 18 GB)"
@@ -333,6 +359,16 @@ if ($LASTEXITCODE -ne 0) { Fail "building the KH1 files failed (see the messages
 
 # ---------------------------------------------------------------------------------------------- 5. install the mod
 Step "Installing the mod into Borderlands"
+if ($Melty) {
+    # the mod code is Melty's; only the KH1 files built on this PC go next to it
+    New-Item -ItemType Directory -Force (Join-Path $ModDir "data") | Out-Null
+    Copy-Item (Join-Path $Staging "*") (Join-Path $ModDir "data") -Recurse -Force
+    Set-Content (Join-Path $ModDir "kh_build_stamp.txt") (KH-Build-Stamp $Here)
+    if (-not $KeepTemp) { Remove-Item $Tmp -Recurse -Force -ErrorAction SilentlyContinue }
+    if ($DoneFile) { New-Item -ItemType Directory -Force (Split-Path -Parent $DoneFile) | Out-Null; Set-Content $DoneFile "built $(Get-Date -Format s)" }
+    Say "  ALL DONE - KH1 files built from your install." "Green"
+    exit 0
+}
 $marker = Join-Path $ModDir "installed_by_setup.txt"
 if ((Test-Path $ModDir) -and -not (Test-Path $marker)) {
     $bak = "$ModDir" + "_backup_" + (Get-Date -Format "yyyyMMdd_HHmmss")
