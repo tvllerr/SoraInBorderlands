@@ -1113,6 +1113,13 @@ def kh1_proxy_tick(S, pc, ks, now: float) -> None:
         for a, _ in foes:
             if a in free_:
                 continue
+            # bug 10-18: KH1's "leave" fade (parked Heartless, FUN_1402a0f40 SetAlpha(0) + flags +0x0 |= 8) left bit 3
+            # set after the alpha veto -> the stand-in stayed visible / lockable but took no hits (combos, magic, D/G)
+            if CFG.get("kh_no_fade_clear_bit", True):
+                f0_ = kh1_abs(S, a, 4)
+                if f0_ and f0_[0] & 8:
+                    k32.WriteProcessMemory(h, ctypes.c_void_p(a), bytes([f0_[0] & ~8 & 0xFF]), 1, None)
+                    st["kh_fade_bit_clears"] = st.get("kh_fade_bit_clears", 0) + 1
             fb_ = kh1_abs(S, a + 0x60, 8)
             if fb_ and struct.unpack("<f", fb_[4:8])[0] < 0.0:
                 k32.WriteProcessMemory(h, ctypes.c_void_p(a + 0x60), struct.pack("<2f", 1.0, 0.0), 8, None)
@@ -1121,6 +1128,7 @@ def kh1_proxy_tick(S, pc, ks, now: float) -> None:
                     st["kh_fade_veto_log"][a] = now
                     kh1_event(S, f"no fade-out: KH1 started fading {hex(a)} (alpha {struct.unpack('<f', fb_[:4])[0]:.2f}) -> kept")
         S.status["kh_fade_vetoes"] = vetoed
+        S.status["kh_fade_bit_clears"] = st.get("kh_fade_bit_clears", 0)
     # room refill (re-entering KH1's room respawns its Heartless) only when Borderlands enemies nearby actually outnumber
     # the stand-ins, for kh_refill_need_s in a row: the reload blanks KH1's HUD and spawns Heartless with their cloud and
     # sound, and while idling / jumping the scan sometimes saw 0-1 of them (user 2026-10-05)

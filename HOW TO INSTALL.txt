@@ -42,6 +42,10 @@ Kingdom Hearts runs in the background at the same time, and the mod links the tw
  3. Click into the Borderlands window and play. Leave Kingdom Hearts open behind it
     (don't minimize it).
 
+ INSTALLED THROUGH MELTY? Skip steps 1-2: always start it with Melty's Play button (it starts
+ Kingdom Hearts and Borderlands for you). Starting Borderlands from Steam or its desktop shortcut
+ after a Melty install runs plain Borderlands without the mod.
+
  The mod moves KH1 Sora to Traverse Town's Second District and controls him from Borderlands.
  If you click back into the KH1 window, the mod leaves KH1 alone so you can play it normally.
 

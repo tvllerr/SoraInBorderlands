@@ -42,6 +42,9 @@ Full instructions, controls and troubleshooting: [HOW TO INSTALL.txt](HOW%20TO%2
 2. Start Borderlands and load your character.
 3. Play in the Borderlands window. Leave KH1 open behind it (don't minimize it).
 
+**Installed through Melty?** Always start it with Melty's **Play** button (it starts Kingdom Hearts and Borderlands for you).
+Starting Borderlands from Steam or its desktop shortcut after a Melty install runs plain Borderlands without the mod.
+
 Options: Borderlands main menu > **Mods > Sora** (camera, gameplay, visuals, audio, keybinds).
 
 ## Update / uninstall
