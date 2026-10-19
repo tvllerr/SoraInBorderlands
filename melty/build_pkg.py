@@ -28,7 +28,11 @@ with zipfile.ZipFile(SDK) as z:                               # willow1 PythonSD
 items.append(("game/Binaries/Win64/Plugins/unrealsdk.toml", TOML.encode()))
 for f in (REPO / "mod").rglob("*"):
     if f.is_file():
-        items.append(("game/" + f.relative_to(REPO / "mod").as_posix(), f.read_bytes()))
+        data = f.read_bytes()
+        if f.relative_to(REPO / "mod").as_posix() == "sdk_mods/sora/config.json":   # Melty starts both games: KH1 save loads itself
+            cfg = json.loads(data.decode("utf-8-sig")); cfg["kh1_autoload"] = True
+            data = json.dumps(cfg, indent=2).encode("utf-8")
+        items.append(("game/" + f.relative_to(REPO / "mod").as_posix(), data))
 for f in (REPO / "installer").rglob("*"):
     if f.is_file() and f.suffix not in (".c", ".pdb") and "__pycache__" not in f.parts:
         items.append(("setup/installer/" + f.relative_to(REPO / "installer").as_posix(), f.read_bytes()))

@@ -9251,9 +9251,10 @@ def kh1_autoload(S) -> None:
     """Once per KH1 process: when KH1 sits at its opening / title screen, load the bridge and press through it
     (skip the poem, LOAD, Enter on the slot the list opens on = the last one used) so the player lands in the field
     without touching KH1. Presses go through the bridge pad hook (KH1 ignores keys while unfocused). Never presses
-    anything else (F in the load menu deletes the file). Off: config kh1_autoload false."""
+    anything else (F in the load menu deletes the file). Melty builds only: build_pkg.py sets config kh1_autoload true;
+    GitHub installs leave it off (the player loads their KH1 save by hand)."""
     st, now = S.state, time.time()
-    if not S.CFG.get("kh1_autoload", True) or getattr(S, "dll", None) is None:
+    if not S.CFG.get("kh1_autoload", False) or getattr(S, "dll", None) is None:
         return
     al = st.get("kh_autoload")
     if al and al.get("phase") in ("done", "gave up", "skipped"):
