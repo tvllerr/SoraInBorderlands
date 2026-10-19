@@ -3,6 +3,7 @@ import hashlib, io, json, sys, zipfile
 from pathlib import Path
 VER = sys.argv[1] if len(sys.argv) > 1 else "1.0.0"
 REPO = Path("D:/SoraBL/release/repo"); SDK = Path("D:/SoraBL/melty/dl/bl1-enhanced-sdk.zip")
+VCRT = Path("D:/SoraBL/melty/dl/vcredist-14.51.36247")   # x64 files from Microsoft's vc_redist.x64.exe 14.51.36247 (redistributable)
 OUT = Path(f"D:/SoraBL/melty/dist/SoraInBorderlands-melty-{VER}.zip"); OUT.parent.mkdir(exist_ok=True)
 TOML = """[unrealsdk]
 locking_function_calls = true
@@ -35,6 +36,8 @@ for f in (REPO / "LICENSES").rglob("*"):
     if f.is_file():
         items.append(("setup/LICENSES/" + f.relative_to(REPO / "LICENSES").as_posix(), f.read_bytes()))
 items.append(("setup/LICENSES/willow1-mod-manager-LGPL-3.0.txt", Path("D:/SoraBL/melty/dl/willow1-LICENSE.txt").read_bytes()))
+for n in ("vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll"):   # SDK dlls are linked with 14.51; dinput8 loads these first, the rest reuse them
+    items.append(("game/Binaries/Win64/" + n, (VCRT / n).read_bytes()))
 items.append(("game/Binaries/Win64/steam_appid.txt", b"729040"))   # Launcher.exe started directly stays the tracked process (no Steam relaunch)
 items.append(("kh/steam_appid.txt", b"2552430"))   # KH1FM exe then starts directly (skips the HD launcher) when cwd = KH folder
 for n in ("LICENSE", "README.md", "HOW TO INSTALL.txt"):

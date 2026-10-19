@@ -14,6 +14,33 @@ import unrealsdk  # type: ignore
 
 UU = math.pi / 32768.0  # unreal rotator units -> radians
 HERE = Path(__file__).parent
+# Debug traces/dumps (text files next to logic.py) are OFF for players. config.json turns them on: "dbg_files": true for
+# all of them, or one key (e.g. "dbg_combo_trace": true). 1.0.3 and older wrote them for everyone, every fight.
+DBG_FILES = {"dbg_juggle_trace": "juggle_trace.txt", "dbg_spawn_trace": "spawn_trace.txt",
+             "dbg_combo_trace": "combo_trace.txt", "dbg_air_trace": "air_trace.txt",
+             "dbg_lock_trace": "lock_cam_trace.txt", "dbg_hit_trace": "hit_trace.txt",
+             "dbg_summon_trace": "summon_trace.txt", "dbg_ability_trace": "ability_trace.txt",
+             "dbg_cam_log": "cam_log.txt", "dbg_party_hp_log": "party_hp_log.txt",
+             "dbg_party_trace": "party_trace.txt", "dbg_glide_trace": "glide_trace.txt",
+             "dbg_damage_probe": "damage_probe.txt", "dbg_fields_dump": "fields.txt"}
+
+
+def dbg_on(S, key: str) -> bool:
+    """True when config.json asks for this debug trace/dump (its own key wins over "dbg_files")."""
+    return bool(S.CFG.get(key, S.CFG.get("dbg_files", False)))
+
+
+def dbg_clean_old(S) -> None:
+    """Once per session: delete the trace files old versions left behind (only the ones that are switched off)."""
+    if S.state.get("dbg_cleaned"):
+        return
+    S.state["dbg_cleaned"] = True
+    for key, name in DBG_FILES.items():
+        if not dbg_on(S, key):
+            try:
+                (HERE / name).unlink(missing_ok=True)
+            except OSError:
+                pass
 BLEND_TIME = 0.15
 
 
@@ -885,7 +912,7 @@ def kh1_react_step(S, ks, a: int, r: dict, now: float) -> bool:
         if was_air and not air:
             p.SetPhysics(2)                                        # PHYS_Falling: lands on the real ground
     S.pending.append(_mv)
-    if CFG.get("dbg_juggle_trace", True):                  # juggle trace (next session)
+    if dbg_on(S, "dbg_juggle_trace"):                  # juggle trace (next session)
         with open(HERE / "juggle_trace.txt", "a") as f_:
             f_.write(f"{now % 1000:8.2f} {hex(a)} kh_off {ox:6.0f} {oz:6.0f} up {up_k:5.0f} -> bl {rx:6.0f} {ry:6.0f} z+ {tgt[2] - b0[2]:5.0f} air {int(air)}" + chr(10))
     if now < r["until"] or air or now - r["still_t"] < CFG.get("kh_juggle_settle_s", 0.15):
@@ -975,7 +1002,7 @@ def kh1_spawn_watch(S, ks, now: float) -> None:
                 continue                                       # never over KH1 Sora himself (his own effects)
             fresh.append([list(pos), now])
             st["kh_spawn_fresh_n"] = st.get("kh_spawn_fresh_n", 0) + 1
-            if CFG.get("dbg_spawn_trace", True):
+            if dbg_on(S, "dbg_spawn_trace"):
                 try:
                     kind = struct.unpack_from("<I", raw, i * KH_STRIDE + 0x134)[0]
                     rel = [round(a_ - b_) for a_, b_ in zip(pos, ks["pos"])]
@@ -1006,7 +1033,7 @@ def kh1_spawn_learn(S, ks, foes, now: float) -> None:
     pts_all = st.get("kh_spawn_pts")
     if pts_all is None:
         try:
-            pts_all = json.load(open(SPAWN_FILE))
+            pts_all = json.loads(Path(SPAWN_FILE).read_text(encoding="utf-8"))
         except Exception:  # noqa: BLE001
             pts_all = {}
         st["kh_spawn_pts"] = pts_all
@@ -1033,7 +1060,7 @@ def kh1_spawn_learn(S, ks, foes, now: float) -> None:
                 kh1_event(S, f"learned a Heartless spawn point in room {room}: {[round(v) for v in pos]} (its cloud is hidden)")
         if learned:
             try:
-                json.dump(pts_all, open(SPAWN_FILE, "w"), indent=1)
+                Path(SPAWN_FILE).write_text(json.dumps(pts_all, indent=1), encoding="utf-8")
             except Exception:  # noqa: BLE001
                 pass
     # active mute spheres: not while KH1 Sora or a paired stand-in is close (their own effects must show)
@@ -2598,7 +2625,7 @@ def kh1_combat_tick(S, pc, ks, now: float) -> None:
     else:
         st["kh_move_on"] = False
         kh1_body_velocity(S, pc, ks, now)
-    if S.CFG.get("dbg_combo_trace", True) and (ks["state"] == KH_STATE_ATTACK or int(pc.Pawn.Physics) == 2):
+    if dbg_on(S, "dbg_combo_trace") and (ks["state"] == KH_STATE_ATTACK or int(pc.Pawn.Physics) == 2):
         try:
             combo_trace(S, pc, ks, now)
         except Exception as ex:  # noqa: BLE001
@@ -2932,7 +2959,7 @@ def kh1_body_sync(S, pc, pawn, now: float) -> None:
     # landed him mid-combo and the landing snapped KH1 Sora down, ending the combo. Config kh_air_combo_hang.
     air_atk = ks["state"] == KH_STATE_ATTACK and (kh_air or st.get("kh_air_atk", False))
     st["kh_air_atk"] = bool(air_atk and bl_air)
-    if CFG.get("dbg_air_trace", True) and (bl_air or ks["state"] == KH_STATE_ATTACK):   # air combo trace (next session)
+    if dbg_on(S, "dbg_air_trace") and (bl_air or ks["state"] == KH_STATE_ATTACK):   # air combo trace (next session)
         tr = st.setdefault("air_trace", [])
         tr.append(f"{now % 1000:8.2f} blair {int(bl_air)} blz {bl_z:8.1f} vz {float(pawn.Velocity.Z):6.0f} | khy {y:6.0f} "
                   f"gnd {ground} khair {int(kh_air)} st {ks['state']} an {ks['anim']} airatk {int(air_atk)} gm {int(bool(ground_mode))}")
@@ -3848,7 +3875,7 @@ def lock_update(S, pc, dt: float) -> None:
         S.status["kh_lock_cam"] = [round(math.degrees(mir[0]), 1), round(math.degrees(mir[1]), 1)]
     rot = pc.Rotation
     yaw, pitch = int(rot.Yaw) * UU, ang(int(rot.Pitch) * UU)
-    if CFG.get("dbg_lock_trace", True):
+    if dbg_on(S, "dbg_lock_trace"):
         # one line per frame while locked: why the KH1 lock camera swings (lock_cam_trace.txt)
         tr = st.setdefault("lock_trace", [])
         fd = st.get("kh_foc_dbg") if foc is not None else None
@@ -4121,7 +4148,7 @@ def spell_damage(S, pc, p, name: str, level: int = 1, share: float = 1.0) -> flo
         dmg = mx * CFG.get("kb_magic_frac", 0.16) * CFG.get("kb_spell_mult", {}).get(name, KB_SPELL_MULT.get(name, 1.0)) \
             * sp_tier * share * ratio / max(tier, 0.1)
     dmg *= kb_early_boost(S, pc)
-    if CFG.get("dbg_hit_trace", True):
+    if dbg_on(S, "dbg_hit_trace"):
         try:
             with open(HERE / "hit_trace.txt", "a", encoding="utf-8") as fh:
                 fh.write(f"{time.strftime('%H:%M:%S')} magic {name} L{level} {bl_key(p)} lvl{lvl} tier{tier:.0f} maxHP {mx:.0f} "
@@ -4186,7 +4213,7 @@ def kb_damage(S, pc, p, mult: float = 1.0, who: int = 0, kind: str = "melee") ->
     dmg = mx * frac * ratio * mult / max(tier, 0.1)
     if who in (0, 3):                                     # Sora + summons (Donald / Goofy unchanged)
         dmg *= kb_early_boost(S, pc)
-    if CFG.get("dbg_hit_trace", True):
+    if dbg_on(S, "dbg_hit_trace"):
         try:
             with open(HERE / "hit_trace.txt", "a", encoding="utf-8") as fh:
                 fh.write(f"{time.strftime('%H:%M:%S')} {kind} who{who} {bl_key(p)} lvl{lvl} tier{tier:.0f} maxHP {mx:.0f} "
@@ -4467,14 +4494,15 @@ def kh1_ability_tick(S, now: float) -> None:
     orig = st.get("kh_abil_orig", 0)
     kh1_poke(S, KH_ABILITY_FLAGS, bytes([(orig & ~0x1F) | ab[1]]))   # only this one: Triangle does exactly it
     try:
-        ks = kh1_state(S)
+        ks = kh1_state(S) if dbg_on(S, "dbg_ability_trace") else None
         if ks:
             tr = st.setdefault("abil_trace", [])
             tr.append(f"{now % 1000:8.3f} {ab[0]:12s} state {ks['state']:3d} anim {ks['anim']:3d} pos "
                       f"{[round(v) for v in ks['pos']]} vel {[round(v * 60) for v in ks['vel']]} live {S.status.get('kh1_live')} "
                       f"tri {int(bool(st.get('kh_press', {}).get(PAD_TRIANGLE)))}")
             if len(tr) % 20 == 0:
-                (HERE / "ability_trace.txt").write_text("\n".join(tr[-2000:]) + "\n")
+                del tr[:-2000]
+                (HERE / "ability_trace.txt").write_text("\n".join(tr) + "\n")
     except Exception as ex:  # noqa: BLE001
         S.status["abil_trace_error"] = str(ex)
     if now >= st.get("kh_abil_next", 0):
@@ -4740,6 +4768,8 @@ def cam_log_tick(S, now: float) -> None:
     """Logs (movement camera estimate, KH1's real camera yaw) pairs while steering, to fit how they relate (the real
     KH1 lock-on swings KH1's camera; movement should follow the real camera instead of a slow estimate)."""
     st = S.state
+    if not dbg_on(S, "dbg_cam_log"):
+        return
     if now - st.get("cam_log_t", 0) < 0.5 or st.get("kh_cam_c") is None or st.get("kh_stick_mag", 0) < 0.3:
         return
     st["cam_log_t"] = now
@@ -4748,6 +4778,7 @@ def cam_log_tick(S, now: float) -> None:
         return
     log = st.setdefault("cam_log", [])
     log.append(f"{now % 10000:.2f} c {st['kh_cam_c']:.1f} cam {cy:.1f} lock {kh1_lock(S)[0]}")
+    del log[:-2000]
     if len(log) % 10 == 0:
         (HERE / "cam_log.txt").write_text("\n".join(log[-2000:]) + "\n")
 
@@ -5056,7 +5087,7 @@ def kh1_elem_codes(S) -> dict:
     if c is None:
         c = dict(KH1_ELEM_SEED)
         try:
-            c.update({int(k): v for k, v in json.load(open(ELEM_CODE_FILE)).items()})
+            c.update({int(k): v for k, v in json.loads(Path(ELEM_CODE_FILE).read_text(encoding="utf-8")).items()})
         except Exception:  # noqa: BLE001
             pass
         S.state["kh_elem_codes"] = c
@@ -5075,7 +5106,7 @@ def kh1_learn_elem(S, a: int, spell: str, now: float) -> None:
         try:
             learned = {k: v for k, v in c.items() if KH1_ELEM_SEED.get(k) != v or k in (S.state.get("kh_elem_seen") or set())}
             learned[info[1]] = spell
-            json.dump({str(k): v for k, v in learned.items()}, open(ELEM_CODE_FILE, "w"), indent=1)
+            Path(ELEM_CODE_FILE).write_text(json.dumps({str(k): v for k, v in learned.items()}, indent=1), encoding="utf-8")
         except Exception:  # noqa: BLE001
             pass
         kh1_event(S, f"learned KH1 element code {info[1]} = {spell}")
@@ -5639,7 +5670,7 @@ def summon_draw_tick(S, pc, now: float) -> None:
     dll.sr_set_enemy(SUMMON_SLOT, ctypes.c_uint64(ent), mid, ctypes.byref(af))
     S.status["summon_draw"] = [mid, hex(ent), dll.sr_enemy_state(SUMMON_SLOT) if hasattr(dll, "sr_enemy_state") else None,
                                round(s_ent, 3)]
-    if CFG.get("dbg_summon_trace", True) and now - st.get("summon_trace_t", 0) > 0.25:
+    if dbg_on(S, "dbg_summon_trace") and now - st.get("summon_trace_t", 0) > 0.25:
         # (user 2026-10-06: Sora looks smaller and sits on Dumbo's HEAD instead of his neck / back) - scales + heights
         st["summon_trace_t"] = now
         sm = ks.get("m") or []
@@ -5821,7 +5852,7 @@ def party_tick(S, pc, now: float) -> None:
     # vanilla (user 2026-10-05): Donald and Goofy take hits, get KO'd and come back by KH1's own rules. The old
     # full-HP refill and Donald's free MP were made up -> only with config party_keep_full / party_mp_regen.
     php = S.status["party_hp"] = party_hp_read(S)
-    if php != st.get("party_hp_last"):                   # every change of Donald's / Goofy's HP: party_hp_log.txt
+    if php != st.get("party_hp_last") and dbg_on(S, "dbg_party_hp_log"):                   # every change of Donald's / Goofy's HP: party_hp_log.txt
         st["party_hp_last"] = php
         log = st.setdefault("party_hp_log", [])
         log.append("%s %s %s" % (time.strftime("%H:%M:%S"), php, [S.dll.sr_actor_state(0), S.dll.sr_actor_state(1)]))
@@ -5850,7 +5881,7 @@ def party_tick(S, pc, now: float) -> None:
     st["party_smooth_t"] = now
     S.status["party"] = [S.dll.sr_actor_state(0), S.dll.sr_actor_state(1)]
     # party trace (party_trace.txt) while Borderlands enemies are paired with stand-ins
-    if st.get("kh_proxied") and now - st.get("ptrace_t", 0) > 0.1:
+    if st.get("kh_proxied") and now - st.get("ptrace_t", 0) > 0.1 and dbg_on(S, "dbg_party_trace"):
         st["ptrace_t"] = now
         try:
             line = [f"{now % 1000:8.2f}"]
@@ -5865,7 +5896,7 @@ def party_tick(S, pc, now: float) -> None:
                 stp = kh1_resolve(S, struct.unpack_from("<I", raw, 0x6C)[0])
                 mp = struct.unpack("<i", kh1_abs(S, stp + 0x44, 4))[0] if stp else -1
                 line.append(f"{name} st {raw[0x160]:3d} an {raw[0x164]:3d} near {d:6.0f} mp {mp}")
-            tr = st.setdefault("party_trace", []); tr.append(" | ".join(line))
+            tr = st.setdefault("party_trace", []); tr.append(" | ".join(line)); del tr[:-3000]
             if len(tr) % 20 == 0:
                 (HERE / "party_trace.txt").write_text(chr(10).join(tr[-3000:]) + chr(10))
         except Exception as ex:  # noqa: BLE001
@@ -6933,7 +6964,7 @@ def sound_tick(S, pc, pawn, ks, now: float) -> None:
     cues = getattr(S, "sfx_cues", None)
     if cues is None:
         try:
-            cues = {int(k): v for k, v in json.load(open(HERE / "data" / "sora_sfx_cues.json")).items()}
+            cues = {int(k): v for k, v in json.loads((HERE / "data" / "sora_sfx_cues.json").read_text(encoding="utf-8")).items()}
         except Exception:  # noqa: BLE001
             cues = {}
         S.sfx_cues = cues
@@ -6973,7 +7004,7 @@ def sound_tick(S, pc, pawn, ks, now: float) -> None:
             pc_cues = getattr(S, f"{prefix}_cues", None)
             if pc_cues is None:
                 try:
-                    pc_cues = {int(k): v for k, v in json.load(open(HERE / "data" / f"{prefix}_sfx_cues.json")).items()}
+                    pc_cues = {int(k): v for k, v in json.loads((HERE / "data" / f"{prefix}_sfx_cues.json").read_text(encoding="utf-8")).items()}
                 except Exception:  # noqa: BLE001
                     pc_cues = {}
                 setattr(S, f"{prefix}_cues", pc_cues)
@@ -8381,33 +8412,34 @@ def kh1_glide_tick(S, ks, now: float) -> None:
         st["kh_glide_tries"] = st.get("kh_glide_tries", 0) + 1
     S.status["kh_glide"] = {"on": True, "gliding": gliding, "tries": st.get("kh_glide_tries", 0), "anim": ks["anim"]}
     # trace (glide_trace.txt): one line per tick while gliding is wanted
-    try:
-        sh = kh1_shared(S)
-        mv = kh1_mem(S, 0, 0) if False else None
-        raw = kh1_abs(S, ks["addr"] + 0x160, 0x10) or bytes(16)
-        ref = kh1_abs(S, ks["addr"] + KH_GLIDE_REF, 12) or bytes(12)
-        timer = None
-        hnd = kh1_abs(S, ks["addr"] + 0x148, 4)
-        if hnd:
-            ta = kh1_resolve(S, int.from_bytes(hnd, "little"))
-            tb = kh1_abs(S, ta + 0x100, 4) if ta else None
-            timer = struct.unpack("<f", tb)[0] if tb else None
-        h3d4 = kh1_abs(S, ks["addr"] + 0x3D4, 4)
-        mstate = kh1_abs(S, ks["addr"] + 0x70, 4)    # +0x1c dword index = movement state (0x15 = glide)
-        press = st.get("kh_press", {}).get(PAD_CIRCLE)
-        held = bool(press and press[0] <= now < press[1])
-        line = (f"{now % 1000:8.3f} anim {ks['anim']:3d} st {ks['state']:3d} mv {int.from_bytes(mstate or bytes(4), 'little'):3d} "
-                f"y {ks['pos'][1]:8.1f} vy {ks['vel'][1] * 60:7.1f} ref_dy {struct.unpack('<3f', ref)[1] - ks['pos'][1]:8.1f} "
-                f"timer {timer if timer is None else round(timer, 2)} h3d4 {struct.unpack('<f', h3d4)[0] if h3d4 else None:.1f} "
-                f"floor_on {sh_u32(sh, SH_FLOOR_ON) if sh else '-'} air {sh_u32(sh, SH_SORA_AIR) if sh else '-'} circle {int(held)}")
-        tr = st.setdefault("glide_trace", [])
-        tr.append(line)
-        if len(tr) % 30 == 0 or len(tr) > 3000:
-            (HERE / "glide_trace.txt").write_text("\n".join(tr[-3000:]) + "\n")
-            if len(tr) > 3000:
-                del tr[:-3000]
-    except Exception as ex:  # noqa: BLE001
-        S.status["glide_trace_error"] = str(ex)
+    if dbg_on(S, "dbg_glide_trace"):
+        try:
+            sh = kh1_shared(S)
+            mv = kh1_mem(S, 0, 0) if False else None
+            raw = kh1_abs(S, ks["addr"] + 0x160, 0x10) or bytes(16)
+            ref = kh1_abs(S, ks["addr"] + KH_GLIDE_REF, 12) or bytes(12)
+            timer = None
+            hnd = kh1_abs(S, ks["addr"] + 0x148, 4)
+            if hnd:
+                ta = kh1_resolve(S, int.from_bytes(hnd, "little"))
+                tb = kh1_abs(S, ta + 0x100, 4) if ta else None
+                timer = struct.unpack("<f", tb)[0] if tb else None
+            h3d4 = kh1_abs(S, ks["addr"] + 0x3D4, 4)
+            mstate = kh1_abs(S, ks["addr"] + 0x70, 4)    # +0x1c dword index = movement state (0x15 = glide)
+            press = st.get("kh_press", {}).get(PAD_CIRCLE)
+            held = bool(press and press[0] <= now < press[1])
+            line = (f"{now % 1000:8.3f} anim {ks['anim']:3d} st {ks['state']:3d} mv {int.from_bytes(mstate or bytes(4), 'little'):3d} "
+                    f"y {ks['pos'][1]:8.1f} vy {ks['vel'][1] * 60:7.1f} ref_dy {struct.unpack('<3f', ref)[1] - ks['pos'][1]:8.1f} "
+                    f"timer {timer if timer is None else round(timer, 2)} h3d4 {struct.unpack('<f', h3d4)[0] if h3d4 else None:.1f} "
+                    f"floor_on {sh_u32(sh, SH_FLOOR_ON) if sh else '-'} air {sh_u32(sh, SH_SORA_AIR) if sh else '-'} circle {int(held)}")
+            tr = st.setdefault("glide_trace", [])
+            tr.append(line)
+            if len(tr) % 30 == 0 or len(tr) > 3000:
+                (HERE / "glide_trace.txt").write_text("\n".join(tr[-3000:]) + "\n")
+                if len(tr) > 3000:
+                    del tr[:-3000]
+        except Exception as ex:  # noqa: BLE001
+            S.status["glide_trace_error"] = str(ex)
 
 
 # ---------------------------------------------------------------- per frame
@@ -10434,6 +10466,7 @@ def _tick(S, pc) -> None:
         S.status["hot_swap_error"] = f"{type(ex).__name__}: {ex}"
     frame, state, CFG = S.frame, S.state, S.CFG
     pawn = pc.Pawn if pc is not None else None
+    dbg_clean_old(S)
     # Level change / no character (quitting to the menu, loading, dying): drop every queued game-tick job and every
     # remembered actor. Jobs holding the old pawn ran against a destroyed object in the menu -> General protection fault.
     try:
@@ -10911,7 +10944,7 @@ def _tick(S, pc) -> None:
             pawn.CameraScaleUp = CFG["cam_up"]
     except Exception as ex:  # noqa: BLE001
         S.status["cam_error"] = str(ex)
-    if not state.get("dmg_probe") and all_enemies():
+    if dbg_on(S, "dbg_damage_probe") and not state.get("dmg_probe") and all_enemies():
         state["dmg_probe"] = True
         lines = []
         try:
@@ -10932,8 +10965,8 @@ def _tick(S, pc) -> None:
                     lines.append("CLASS " + n)
         except Exception as ex:  # noqa: BLE001
             lines.append("ERR " + str(ex))
-        open(str(HERE / "damage_probe.txt"), "w", encoding="utf-8").write(chr(10).join(lines))
-    if not state.get("dumped"):
+        (HERE / "damage_probe.txt").write_text(chr(10).join(lines), encoding="utf-8")
+    if dbg_on(S, "dbg_fields_dump") and not state.get("dumped"):
         state["dumped"] = True
         field_dump([("pc", pc), ("pawn", pawn), ("weapon", pawn.Weapon)], str(HERE / "fields.txt"))
     S.status.update(action=(state.get("action") or {}).get("motion"), anim=state["anim"], speed=round(speed),
