@@ -1547,7 +1547,11 @@ struct Saved {
     ID3D11VertexShader* v; ID3D11PixelShader* p; ID3D11GeometryShader* g; ID3D11Buffer* vcb[2]; ID3D11Buffer* pcb[2];
     ID3D11ShaderResourceView* srv[2]; ID3D11SamplerState* smp[2];
 };
+// v89: > 0 while our own drawing runs (between save and restore): the OMSetRenderTargets / Draw hooks pass our binds
+// straight through, so our depth/shadow/offscreen targets are never taken for the game's scene targets
+static int g_selfDraw = 0;
 static void save(Saved& s) {
+    g_selfDraw++;
     ctx->OMGetRenderTargets(8, s.rt, &s.ds); s.nvp = 16; ctx->RSGetViewports(&s.nvp, s.vp); ctx->RSGetState(&s.rs);
     ctx->OMGetDepthStencilState(&s.dss, &s.sref); ctx->OMGetBlendState(&s.bs, s.bf, &s.sm);
     ctx->IAGetInputLayout(&s.il); ctx->IAGetVertexBuffers(0, 1, &s.vb, &s.vs_, &s.vo); ctx->IAGetIndexBuffer(&s.ib, &s.ifmt, &s.io); ctx->IAGetPrimitiveTopology(&s.top);
@@ -1565,6 +1569,7 @@ static void restore(Saved& s) {
     ctx->IASetInputLayout(s.il); ctx->IASetVertexBuffers(0, 1, &s.vb, &s.vs_, &s.vo); ctx->IASetIndexBuffer(s.ib, s.ifmt, s.io); ctx->IASetPrimitiveTopology(s.top);
     ctx->VSSetShader(s.v, nullptr, 0); ctx->PSSetShader(s.p, nullptr, 0); ctx->GSSetShader(s.g, nullptr, 0);
     ctx->VSSetConstantBuffers(0, 2, s.vcb); ctx->PSSetConstantBuffers(0, 2, s.pcb); ctx->PSSetShaderResources(0, 2, s.srv); ctx->PSSetSamplers(0, 2, s.smp);
+    if (g_selfDraw > 0) g_selfDraw--;
     for (auto& r : s.rt) rel(r); rel(s.ds); rel(s.rs); rel(s.dss); rel(s.bs); rel(s.il); rel(s.vb); rel(s.ib); rel(s.v); rel(s.p); rel(s.g);
     rel(s.vcb[0]); rel(s.vcb[1]); rel(s.pcb[0]); rel(s.pcb[1]); rel(s.srv[0]); rel(s.srv[1]); rel(s.smp[0]); rel(s.smp[1]);
 }
@@ -1697,8 +1702,8 @@ static int g_trace = 0;          // frames left to trace
 static int g_draws = 0;          // draws since last RT bind
 static int g_frameDraws = 0;     // draws since the last Present
 static void after_ui_draw(ID3D11DeviceContext* c, UINT n, bool indexed);
-static void STDMETHODCALLTYPE hkDrawIdx(ID3D11DeviceContext* c, UINT n, UINT a, INT b) { HookGuard hg; g_draws++; g_frameDraws++; oDrawIdx(c, n, a, b); after_ui_draw(c, n, true); }
-static void STDMETHODCALLTYPE hkDraw(ID3D11DeviceContext* c, UINT n, UINT a) { HookGuard hg; g_draws++; g_frameDraws++; oDraw(c, n, a); after_ui_draw(c, n, false); }
+static void STDMETHODCALLTYPE hkDrawIdx(ID3D11DeviceContext* c, UINT n, UINT a, INT b) { HookGuard hg; if (g_selfDraw && c == ctx) { oDrawIdx(c, n, a, b); return; } g_draws++; g_frameDraws++; oDrawIdx(c, n, a, b); after_ui_draw(c, n, true); }
+static void STDMETHODCALLTYPE hkDraw(ID3D11DeviceContext* c, UINT n, UINT a) { HookGuard hg; if (g_selfDraw && c == ctx) { oDraw(c, n, a); return; } g_draws++; g_frameDraws++; oDraw(c, n, a); after_ui_draw(c, n, false); }
 static void describe(ID3D11View* v, char* out, size_t n) {
     if (!v) { snprintf(out, n, "-"); return; }
     ID3D11Resource* r = nullptr; v->GetResource(&r); ID3D11Texture2D* t = nullptr;
@@ -1755,7 +1760,7 @@ static void draw_sora_now(ID3D11RenderTargetView* rt, ID3D11DepthStencilView* d)
 
 static void STDMETHODCALLTYPE hkOMSetRT(ID3D11DeviceContext* c, UINT n, ID3D11RenderTargetView* const* r, ID3D11DepthStencilView* d) {
     HookGuard hg;
-    if (g_shutReq) { oOMSetRT(c, n, r, d); return; }
+    if (g_shutReq || (g_selfDraw && c == ctx)) { oOMSetRT(c, n, r, d); return; }   // v89: our own binds pass through
     // The HUD/UI pass starts when the game binds the back buffer together with the scene depth:
     // draw Sora there, after the world and before any UI.
     if (g_gfx && !g_drawnThisFrame && n && r && r[0] && d && g_bbRes && c == ctx) {
@@ -1805,7 +1810,7 @@ static void STDMETHODCALLTYPE hkOMSetRT(ID3D11DeviceContext* c, UINT n, ID3D11Re
     }
     g_draws = 0;
     // remember the last full-screen depth buffer the game binds (the scene depth)
-    if (d && d != g_sceneDsv && g_bbW) {
+    if (d && d != g_sceneDsv && g_bbW && c == ctx) {   // v89: immediate context only, like the blocks above
         ID3D11Resource* res = nullptr; d->GetResource(&res);
         if (res) {
             ID3D11Texture2D* t = nullptr;
@@ -1882,8 +1887,24 @@ static HRESULT STDMETHODCALLTYPE hkResize(IDXGISwapChain* sc, UINT a, UINT w, UI
     if (g_dcopyDsv) { g_dcopyDsv->Release(); g_dcopyDsv = nullptr; } if (g_dcopy) { g_dcopy->Release(); g_dcopy = nullptr; }
     if (g_dcopySrv) { g_dcopySrv->Release(); g_dcopySrv = nullptr; }
     if (g_sceneRt) { g_sceneRt->Release(); g_sceneRt = nullptr; } if (g_sceneDs) { g_sceneDs->Release(); g_sceneDs = nullptr; }
+    // v88: the UI pass keeps the back buffer's RTV; holding it made ResizeBuffers fail (887a0001) -> BL drew the new
+    // resolution into the corner of the old-size back buffer
+    if (g_uiRtv) { g_uiRtv->Release(); g_uiRtv = nullptr; } if (g_uiDsv) { g_uiDsv->Release(); g_uiDsv = nullptr; }
+    g_uiPass = false;
     g_bbRes = nullptr;
-    return oResize(sc, a, w, h, f, fl);
+    {   // diag: who still references the back buffer at resize time
+        ID3D11Texture2D* bb0 = nullptr; ULONG refs = 0;
+        if (SUCCEEDED(sc->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&bb0)) && bb0) { bb0->AddRef(); refs = bb0->Release(); }
+        ID3D11RenderTargetView* bound[8]{}; ID3D11DepthStencilView* bds = nullptr; int bbBound = 0;
+        if (ctx) { ctx->OMGetRenderTargets(8, bound, &bds);
+            for (auto* v : bound) if (v) { ID3D11Resource* r = nullptr; v->GetResource(&r); if (r == bb0) bbBound++; if (r) r->Release(); v->Release(); }
+            if (bds) bds->Release(); }
+        logf("resize diag: bb %p refs %lu (incl. our GetBuffer), bound on ctx %d, buffers arg %u", (void*)bb0, refs, bbBound, a);
+        if (bb0) bb0->Release();
+    }
+    HRESULT hr = oResize(sc, a, w, h, f, fl);
+    logf("resize %ux%u -> hr %08lx (held: uiRtv %p uiDsv %p envTex %p ownDsv %p)", w, h, (unsigned long)hr, (void*)g_uiRtv, (void*)g_uiDsv, (void*)g_envTex, (void*)g_ownDsv);
+    return hr;
 }
 
 static bool install_hooks() {

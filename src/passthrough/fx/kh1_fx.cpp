@@ -219,19 +219,44 @@ static int g_eq_wait = 0;     // frames since our equip started (0 = none pendin
 // result: 0x40 synced, count of reloads << 16; 0x80 = bytes differ (not called).
 static const uintptr_t RVA_SPELL_TABLE = 0x2D22B80, RVA_SPELL_SET = 0x28F560;
 static const uint8_t SPELL_SET_BYTES[] = {0x48, 0x83, 0xec, 0x28, 0x4c, 0x63, 0xca};
+// v45 (Melty player crash, KH1 rva 0x31CC1F, reproduced 2026-10-18 work/crash31cc1f/magic_repro.py): FUN_14028f560
+// async-loads the new spell file INTO THE SAME BUFFER (table +0x10, size +0x28) the live spell's effect emitters read
+// (emitter table 0x2678280, 256 x 0xe0, active = +0x92 & 5 == 1, +0x80 module id list, +0x98 / +0xA0 effect data).
+// A loadout tier change while a Fire / Donald spell was still out overwrote their id lists -> FUN_14031cbe0 resolved id
+// 0 -> null read. Now a spell whose buffer an active emitter points into is not reloaded; it stays pending and
+// magic_sync runs again every frame (lo_watch) until that effect is gone. result 0x400 = some spells held back.
+static const uintptr_t RVA_EMITTERS = 0x2678280;
+static bool spell_in_use(int i) {
+    uint8_t* s = (uint8_t*)(g_base + RVA_SPELL_TABLE + (size_t)i * 0x38);
+    uintptr_t lo = *(uintptr_t*)(s + 0x10), hi = lo + *(uint32_t*)(s + 0x28);
+    if (!lo || hi == lo) return false;
+    for (int k = 0; k < 256; k++) {
+        uint8_t* e = (uint8_t*)(g_base + RVA_EMITTERS + (size_t)k * 0xe0);
+        if ((*(uint16_t*)(e + 0x92) & 5) != 1) continue;
+        static const int offs[] = {0x80, 0x98, 0xa0};
+        for (int off : offs) {
+            uintptr_t p = *(uintptr_t*)(e + off);
+            if (p >= lo && p < hi) return true;
+        }
+    }
+    return false;
+}
+static volatile int g_msync_pending = 0;
 static uint32_t magic_sync() {
     if (memcmp((void*)(g_base + RVA_SPELL_SET), SPELL_SET_BYTES, sizeof SPELL_SET_BYTES)) return 0x80;
     uint8_t* party = *(uint8_t**)(g_base + RVA_PARTY_PTR);
     if (!party) return 0;
-    uint32_t n = 0;
+    uint32_t n = 0, held = 0;
     for (int i = 0; i < 7; i++) {
         uint8_t lv = party[0x492 + i];
         int32_t cur = *(int32_t*)(g_base + RVA_SPELL_TABLE + (size_t)i * 0x38);
         if (lv == 0 || lv > 3 || (int32_t)lv == cur) continue;
+        if (spell_in_use(i)) { held++; continue; }               // v45: its effect is still out - next frame
         ((int(__fastcall*)(int, int, void*))(g_base + RVA_SPELL_SET))(i, lv, nullptr);
         n++;
     }
-    return 0x40 | (n << 16);
+    g_msync_pending = held != 0;
+    return 0x40 | (n << 16) | (held ? 0x400 : 0);
 }
 // v44 (session 9 KH1 crashes 21:27 + 22:53): an equip / refresh while KH1 was loading a room (the mod's home warp at a
 // new BL session, or the guard firing mid-reload) ran KH1's weapon-attach FUN_1402a3980 on a party member whose model
@@ -275,6 +300,7 @@ static uint32_t lo_do(uint32_t item, uint32_t flags) {    // v38: shared by the 
 }
 static void lo_handle() { g_lvl->lo_result = lo_do(g_lvl->lo_item, g_lvl->lo_flags); }
 static void lo_watch() {    // once per KH1 frame: our equip's callback never came -> undo the menu bracket ourselves
+    if (g_msync_pending && g_lvl) g_lvl->lo_result |= magic_sync() & 0xffff0000;   // v45: held-back spells
     if (!g_eq_wait) return;
     volatile uint32_t* loading = (uint32_t*)(g_base + RVA_EQUIP_LOADING);
     if (*loading == 0) { g_eq_wait = 0; return; }
@@ -1263,7 +1289,7 @@ static void __fastcall hkFxPass(void* a1, void* a2, void* a3, void* a4) {
 
 static DWORD WINAPI init_thread(LPVOID) {
     g_base = (uintptr_t)GetModuleHandleW(nullptr);
-    crash_init("KH1", "kh1_fx v44");
+    crash_init("KH1", "kh1_fx v45");
     QueryPerformanceFrequency(&g_qpf);
     HANDLE m = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, sizeof(FxShared), FX_SHARED_NAME);
     if (!m) { logf("CreateFileMapping failed %lu", GetLastError()); return 0; }

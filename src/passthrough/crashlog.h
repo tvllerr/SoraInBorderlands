@@ -85,6 +85,7 @@ static bool crash_serious(DWORD code) {
     case EXCEPTION_ACCESS_VIOLATION: case EXCEPTION_ILLEGAL_INSTRUCTION: case EXCEPTION_PRIV_INSTRUCTION:
     case EXCEPTION_STACK_OVERFLOW: case EXCEPTION_INT_DIVIDE_BY_ZERO: case EXCEPTION_IN_PAGE_ERROR:
     case EXCEPTION_ARRAY_BOUNDS_EXCEEDED: case EXCEPTION_DATATYPE_MISALIGNMENT: case 0xC0000409: case 0xC0000374:
+    case EXCEPTION_BREAKPOINT:   // 1.0.3: page heap / heap verifier stops raise int3 (heap corruption caught at free)
         return true;
     }
     return false;
@@ -125,6 +126,7 @@ static const char* crash_code_name(uint32_t c) {
     case EXCEPTION_PRIV_INSTRUCTION: return "privileged instruction"; case EXCEPTION_STACK_OVERFLOW: return "stack overflow";
     case EXCEPTION_INT_DIVIDE_BY_ZERO: return "divide by zero"; case EXCEPTION_IN_PAGE_ERROR: return "in-page error";
     case 0xC0000409: return "stack buffer overrun / fail fast"; case 0xC0000374: return "heap corruption";
+    case EXCEPTION_BREAKPOINT: return "breakpoint (heap verifier stop?)";
     }
     return "exception";
 }
